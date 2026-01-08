@@ -1,0 +1,848 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Mystery of Shadow Manor</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            color: #ddd;
+            font-family: 'Courier New', monospace;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .game-container {
+            max-width: 900px;
+            width: 100%;
+            border: 3px solid #666;
+            background: #000;
+        }
+
+        .visual-area {
+            width: 100%;
+            height: 400px;
+            background: #000;
+            position: relative;
+            border-bottom: 3px solid #666;
+            overflow: hidden;
+        }
+
+        canvas {
+            width: 100%;
+            height: 100%;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+
+        .text-area {
+            padding: 20px;
+            min-height: 250px;
+            max-height: 400px;
+            overflow-y: auto;
+            background: #000;
+            border-bottom: 3px solid #666;
+        }
+
+        .text-area::-webkit-scrollbar {
+            width: 10px;
+        }
+
+        .text-area::-webkit-scrollbar-track {
+            background: #111;
+        }
+
+        .text-area::-webkit-scrollbar-thumb {
+            background: #666;
+        }
+
+        .game-text {
+            line-height: 1.6;
+            margin-bottom: 15px;
+            white-space: pre-wrap;
+        }
+
+        .command {
+            color: #4af;
+        }
+
+        .important {
+            color: #fa4;
+            text-decoration: underline;
+        }
+
+        .error {
+            color: #f44;
+        }
+
+        .success {
+            color: #4f4;
+        }
+
+        .input-area {
+            padding: 15px 20px;
+            background: #111;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .prompt {
+            color: #4af;
+            font-weight: bold;
+        }
+
+        #commandInput {
+            flex: 1;
+            background: #000;
+            border: 2px solid #666;
+            color: #ddd;
+            padding: 8px 12px;
+            font-family: 'Courier New', monospace;
+            font-size: 16px;
+            outline: none;
+        }
+
+        #commandInput:focus {
+            border-color: #4af;
+        }
+
+        .status-bar {
+            padding: 10px 20px;
+            background: #111;
+            border-top: 3px solid #666;
+            display: flex;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 15px;
+            font-size: 14px;
+        }
+
+        .status-item {
+            display: flex;
+            gap: 5px;
+        }
+
+        .status-label {
+            color: #888;
+        }
+
+        .status-value {
+            color: #4af;
+        }
+
+        .title {
+            padding: 15px 20px;
+            background: #111;
+            border-bottom: 3px solid #666;
+            text-align: center;
+        }
+
+        .title h1 {
+            color: #fa4;
+            font-size: 24px;
+            letter-spacing: 2px;
+        }
+
+        .help-text {
+            color: #888;
+            font-size: 12px;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <div class="title">
+            <h1>THE MYSTERY OF SHADOW MANOR</h1>
+        </div>
+        
+        <div class="visual-area">
+            <canvas id="gameCanvas"></canvas>
+        </div>
+        
+        <div class="text-area" id="textArea"></div>
+        
+        <div class="input-area">
+            <span class="prompt">&gt;</span>
+            <input type="text" id="commandInput" autocomplete="off" autofocus>
+        </div>
+        
+        <div class="status-bar">
+            <div class="status-item">
+                <span class="status-label">Location:</span>
+                <span class="status-value" id="locationName">Start</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Items:</span>
+                <span class="status-value" id="itemCount">0</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Quests:</span>
+                <span class="status-value" id="questProgress">0/3</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Game State
+        const game = {
+            currentLocation: 'intro',
+            inventory: [],
+            flags: {},
+            questsCompleted: 0,
+            totalQuests: 3,
+            gameStarted: false
+        };
+
+        // Canvas setup
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = 800;
+        canvas.height = 400;
+
+        // Location images
+        const locationImages = {
+            gate: 'gate.png',
+            entrance: 'entrance.png',
+            garden: 'garden.png',
+            greenhouse: 'greenhouse.png',
+            sideyard: 'sideyard.png',
+            backyard: 'backyard.png',
+            shed: 'shed.png',
+            foyer: 'foyer.png',
+            dining: 'dining.png',
+            upstairs: 'upstairs.png'
+        };
+
+        // Preload images
+        const loadedImages = {};
+        for (const [key, src] of Object.entries(locationImages)) {
+            const img = new Image();
+            img.src = src;
+            loadedImages[key] = img;
+        }
+
+        // Colors
+        const colors = {
+            black: '#000000',
+            white: '#ffffff',
+            gray: '#cccccc',
+            darkGray: '#666666',
+            skin: '#e0ac91',
+            skinShadow: '#c69178',
+            hair: '#282323',
+            cropTop: '#1e1e1e',
+            skirt: '#191919',
+            green: '#2d5016',
+            darkGreen: '#1a3009',
+            brown: '#654321',
+            darkBrown: '#3d2812',
+            yellow: '#ffcc00',
+            red: '#cc0000'
+        };
+
+        // Girl sprite drawing function
+        function drawGirl(x, y) {
+            // Head
+            ctx.fillStyle = colors.skin;
+            ctx.fillRect(x + 6, y + 2, 4, 5);
+            
+            // Hair
+            ctx.fillStyle = colors.hair;
+            ctx.fillRect(x + 5, y + 1, 6, 2);
+            ctx.fillRect(x + 5, y + 3, 1, 3);
+            ctx.fillRect(x + 10, y + 3, 1, 3);
+            ctx.fillRect(x + 4, y + 5, 2, 4);
+            ctx.fillRect(x + 10, y + 5, 2, 4);
+            
+            // Eyes
+            ctx.fillStyle = '#503020';
+            ctx.fillRect(x + 7, y + 4, 1, 1);
+            ctx.fillRect(x + 9, y + 4, 1, 1);
+            
+            // Neck
+            ctx.fillStyle = colors.skin;
+            ctx.fillRect(x + 7, y + 7, 2, 1);
+            
+            // Crop top
+            ctx.fillStyle = colors.cropTop;
+            ctx.fillRect(x + 6, y + 8, 4, 2);
+            ctx.fillRect(x + 5, y + 8, 1, 2);
+            ctx.fillRect(x + 10, y + 8, 1, 2);
+            
+            // Arms
+            ctx.fillStyle = colors.skin;
+            ctx.fillRect(x + 5, y + 10, 1, 3);
+            ctx.fillRect(x + 10, y + 10, 1, 3);
+            
+            // Midriff
+            ctx.fillStyle = colors.skin;
+            ctx.fillRect(x + 6, y + 10, 4, 2);
+            
+            // Skirt
+            ctx.fillStyle = colors.skirt;
+            ctx.fillRect(x + 5, y + 12, 6, 4);
+            
+            // Legs
+            ctx.fillStyle = colors.skin;
+            ctx.fillRect(x + 6, y + 16, 1, 5);
+            ctx.fillRect(x + 8, y + 16, 1, 5);
+            
+            // Shoes
+            ctx.fillStyle = colors.hair;
+            ctx.fillRect(x + 5, y + 21, 2, 1);
+            ctx.fillRect(x + 8, y + 21, 2, 1);
+        }
+
+        // Location scenes
+        const locations = {
+            intro: {
+                name: 'Introduction',
+                description: '',
+                items: [],
+                exits: {},
+                draw: () => {
+                    ctx.fillStyle = colors.black;
+                    ctx.fillRect(0, 0, 800, 400);
+                    
+                    const centerX = 384;
+                    const centerY = 150;
+                    const scale = 3;
+                    
+                    // Head
+                    ctx.fillStyle = colors.skin;
+                    ctx.fillRect(centerX + 6*scale, centerY + 2*scale, 4*scale, 5*scale);
+                    
+                    // Hair
+                    ctx.fillStyle = colors.hair;
+                    ctx.fillRect(centerX + 5*scale, centerY + 1*scale, 6*scale, 2*scale);
+                    ctx.fillRect(centerX + 5*scale, centerY + 3*scale, 1*scale, 3*scale);
+                    ctx.fillRect(centerX + 10*scale, centerY + 3*scale, 1*scale, 3*scale);
+                    ctx.fillRect(centerX + 4*scale, centerY + 5*scale, 2*scale, 4*scale);
+                    ctx.fillRect(centerX + 10*scale, centerY + 5*scale, 2*scale, 4*scale);
+                    
+                    // Eyes
+                    ctx.fillStyle = '#503020';
+                    ctx.fillRect(centerX + 7*scale, centerY + 4*scale, 1*scale, 1*scale);
+                    ctx.fillRect(centerX + 9*scale, centerY + 4*scale, 1*scale, 1*scale);
+                    
+                    // Neck
+                    ctx.fillStyle = colors.skin;
+                    ctx.fillRect(centerX + 7*scale, centerY + 7*scale, 2*scale, 1*scale);
+                    
+                    // Crop top
+                    ctx.fillStyle = colors.cropTop;
+                    ctx.fillRect(centerX + 6*scale, centerY + 8*scale, 4*scale, 2*scale);
+                    ctx.fillRect(centerX + 5*scale, centerY + 8*scale, 1*scale, 2*scale);
+                    ctx.fillRect(centerX + 10*scale, centerY + 8*scale, 1*scale, 2*scale);
+                    
+                    // Arms
+                    ctx.fillStyle = colors.skin;
+                    ctx.fillRect(centerX + 5*scale, centerY + 10*scale, 1*scale, 3*scale);
+                    ctx.fillRect(centerX + 10*scale, centerY + 10*scale, 1*scale, 3*scale);
+                    
+                    // Midriff
+                    ctx.fillStyle = colors.skin;
+                    ctx.fillRect(centerX + 6*scale, centerY + 10*scale, 4*scale, 2*scale);
+                    
+                    // Skirt
+                    ctx.fillStyle = colors.skirt;
+                    ctx.fillRect(centerX + 5*scale, centerY + 12*scale, 6*scale, 4*scale);
+                    
+                    // Legs
+                    ctx.fillStyle = colors.skin;
+                    ctx.fillRect(centerX + 6*scale, centerY + 16*scale, 1*scale, 5*scale);
+                    ctx.fillRect(centerX + 8*scale, centerY + 16*scale, 1*scale, 5*scale);
+                    
+                    // Shoes
+                    ctx.fillStyle = colors.hair;
+                    ctx.fillRect(centerX + 5*scale, centerY + 21*scale, 2*scale, 1*scale);
+                    ctx.fillRect(centerX + 8*scale, centerY + 21*scale, 2*scale, 1*scale);
+                    
+                    // Text
+                    ctx.fillStyle = colors.white;
+                    ctx.font = '20px Courier New';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('Hi, my name is Rebecca...', 400, 350);
+                    
+                    ctx.font = '14px Courier New';
+                    ctx.fillStyle = colors.gray;
+                    ctx.fillText('Press ENTER to begin', 400, 380);
+                }
+            },
+            
+            gate: {
+                name: 'Manor Gate',
+                description: 'You stand before the imposing gates of Shadow Manor. The iron gates are slightly ajar, creaking in the wind. A stone path leads north to the manor entrance. Dark trees loom on either side.',
+                items: [],
+                exits: { north: 'entrance' },
+                draw: () => {
+                    if (loadedImages['gate'] && loadedImages['gate'].complete) {
+                        ctx.drawImage(loadedImages['gate'], 0, 0, 800, 400);
+                    } else {
+                        ctx.fillStyle = colors.black;
+                        ctx.fillRect(0, 0, 800, 400);
+                    }
+                    drawGirl(380, 320);
+                }
+            },
+            
+            entrance: {
+                name: 'Manor Entrance',
+                description: 'You stand at the grand entrance of Shadow Manor. The wooden double doors are weathered but still imposing. A brass knocker hangs in the center. To the west is the garden, to the east is a side path, and the gate lies south.',
+                items: ['key'],
+                exits: { north: 'foyer', west: 'garden', east: 'sideyard', south: 'gate' },
+                draw: () => {
+                    if (loadedImages['entrance'] && loadedImages['entrance'].complete) {
+                        ctx.drawImage(loadedImages['entrance'], 0, 0, 800, 400);
+                    } else {
+                        ctx.fillStyle = colors.black;
+                        ctx.fillRect(0, 0, 800, 400);
+                    }
+                    
+                    if (locations.entrance.items.includes('key')) {
+                        ctx.fillStyle = colors.yellow;
+                        ctx.shadowBlur = 10;
+                        ctx.shadowColor = colors.yellow;
+                        ctx.fillRect(150, 340, 12, 5);
+                        ctx.fillRect(152, 335, 8, 12);
+                        ctx.shadowBlur = 0;
+                    }
+                    
+                    drawGirl(380, 320);
+                }
+            },
+            
+            garden: {
+                name: 'Overgrown Garden',
+                description: 'An overgrown garden surrounds you. Wild roses climb a broken trellis. There\'s a small fountain in the center, no longer working. You can return east to the entrance or explore north to the greenhouse.',
+                items: ['rose'],
+                exits: { east: 'entrance', north: 'greenhouse' },
+                draw: () => {
+                    if (loadedImages['garden'] && loadedImages['garden'].complete) {
+                        ctx.drawImage(loadedImages['garden'], 0, 0, 800, 400);
+                    } else {
+                        ctx.fillStyle = colors.black;
+                        ctx.fillRect(0, 0, 800, 400);
+                    }
+                    
+                    if (locations.garden.items.includes('rose')) {
+                        ctx.fillStyle = colors.red;
+                        ctx.shadowBlur = 8;
+                        ctx.shadowColor = colors.red;
+                        ctx.fillRect(680, 150, 10, 10);
+                        ctx.shadowBlur = 0;
+                    }
+                    
+                    drawGirl(350, 320);
+                }
+            },
+            
+            greenhouse: {
+                name: 'Abandoned Greenhouse',
+                description: 'You\'re inside a dusty greenhouse. Broken glass panels let in shafts of moonlight. Dead plants fill the shelves. There\'s a workbench with gardening tools. An exit leads south back to the garden.',
+                items: ['shovel'],
+                exits: { south: 'garden' },
+                draw: () => {
+                    if (loadedImages['greenhouse'] && loadedImages['greenhouse'].complete) {
+                        ctx.drawImage(loadedImages['greenhouse'], 0, 0, 800, 400);
+                    } else {
+                        ctx.fillStyle = colors.black;
+                        ctx.fillRect(0, 0, 800, 400);
+                    }
+                    
+                    if (locations.greenhouse.items.includes('shovel')) {
+                        ctx.fillStyle = colors.brown;
+                        ctx.fillRect(450, 260, 4, 30);
+                        ctx.fillStyle = colors.gray;
+                        ctx.shadowBlur = 8;
+                        ctx.shadowColor = colors.yellow;
+                        ctx.fillRect(447, 285, 10, 15);
+                        ctx.shadowBlur = 0;
+                    }
+                    
+                    drawGirl(330, 320);
+                }
+            },
+            
+            sideyard: {
+                name: 'Side Yard',
+                description: 'A narrow path along the side of the manor. Old barrels and crates are stacked against the wall. There\'s a cellar door built into the ground. The entrance is west, and you can go north to the back of the manor.',
+                items: [],
+                exits: { west: 'entrance', north: 'backyard' },
+                draw: () => {
+                    if (loadedImages['sideyard'] && loadedImages['sideyard'].complete) {
+                        ctx.drawImage(loadedImages['sideyard'], 0, 0, 800, 400);
+                    } else {
+                        ctx.fillStyle = colors.black;
+                        ctx.fillRect(0, 0, 800, 400);
+                    }
+                    drawGirl(300, 320);
+                }
+            },
+            
+            backyard: {
+                name: 'Back Yard',
+                description: 'Behind the manor is an overgrown yard. An old well sits in the center with a bucket beside it. The side yard is south, and there\'s a small shed to the east.',
+                items: ['rope'],
+                exits: { south: 'sideyard', east: 'shed' },
+                draw: () => {
+                    if (loadedImages['backyard'] && loadedImages['backyard'].complete) {
+                        ctx.drawImage(loadedImages['backyard'], 0, 0, 800, 400);
+                    } else {
+                        ctx.fillStyle = colors.black;
+                        ctx.fillRect(0, 0, 800, 400);
+                    }
+                    
+                    if (locations.backyard.items.includes('rope')) {
+                        ctx.fillStyle = colors.brown;
+                        ctx.shadowBlur = 8;
+                        ctx.shadowColor = colors.yellow;
+                        ctx.fillRect(520, 350, 20, 15);
+                        ctx.fillRect(525, 345, 3, 20);
+                        ctx.fillRect(532, 345, 3, 20);
+                        ctx.shadowBlur = 0;
+                    }
+                    
+                    drawGirl(300, 320);
+                }
+            },
+            
+            shed: {
+                name: 'Tool Shed',
+                description: 'A cramped wooden shed filled with rusty tools. Cobwebs hang from the ceiling. There\'s a locked chest in the corner. The back yard is west.',
+                items: ['lantern'],
+                exits: { west: 'backyard' },
+                draw: () => {
+                    if (loadedImages['shed'] && loadedImages['shed'].complete) {
+                        ctx.drawImage(loadedImages['shed'], 0, 0, 800, 400);
+                    } else {
+                        ctx.fillStyle = colors.black;
+                        ctx.fillRect(0, 0, 800, 400);
+                    }
+                    
+                    if (locations.shed.items.includes('lantern')) {
+                        ctx.fillStyle = colors.yellow;
+                        ctx.shadowBlur = 15;
+                        ctx.shadowColor = colors.yellow;
+                        ctx.fillRect(180, 320, 12, 20);
+                        ctx.fillRect(183, 315, 6, 5);
+                        ctx.shadowBlur = 0;
+                    }
+                    
+                    drawGirl(380, 320);
+                }
+            },
+            
+            foyer: {
+                name: 'Manor Foyer',
+                description: 'You\'ve entered the grand foyer of Shadow Manor. A sweeping staircase leads upward. Portraits of stern-faced ancestors line the walls. Doors lead west to the library and east to the dining room. The entrance is south.',
+                items: [],
+                exits: { west: 'library', east: 'dining', north: 'upstairs', south: 'entrance' },
+                draw: () => {
+                    if (loadedImages['foyer'] && loadedImages['foyer'].complete) {
+                        ctx.drawImage(loadedImages['foyer'], 0, 0, 800, 400);
+                    } else {
+                        ctx.fillStyle = colors.black;
+                        ctx.fillRect(0, 0, 800, 400);
+                    }
+                    drawGirl(380, 340);
+                }
+            },
+            
+            library: {
+                name: 'Library',
+                description: 'Towering bookshelves reach toward the ceiling. Dust motes dance in the air. There\'s a reading desk with an open journal. You can return east to the foyer.',
+                items: ['journal'],
+                exits: { east: 'foyer' },
+                draw: () => {
+                    ctx.fillStyle = '#0a0a0a';
+                    ctx.fillRect(0, 0, 800, 400);
+                    
+                    ctx.fillStyle = '#2a1810';
+                    ctx.fillRect(50, 80, 200, 240);
+                    ctx.fillRect(550, 80, 200, 240);
+                    
+                    if (locations.library.items.includes('journal')) {
+                        ctx.fillStyle = colors.darkBrown;
+                        ctx.shadowBlur = 10;
+                        ctx.shadowColor = colors.yellow;
+                        ctx.fillRect(360, 280, 80, 40);
+                        ctx.shadowBlur = 0;
+                    }
+                    
+                    drawGirl(380, 310);
+                }
+            },
+            
+            dining: {
+                name: 'Dining Room',
+                description: 'A long dining table dominates the room, set for a meal that was never eaten. Candelabras sit on the table, their candles long melted. The foyer is west.',
+                items: ['silver key'],
+                exits: { west: 'foyer' },
+                draw: () => {
+                    if (loadedImages['dining'] && loadedImages['dining'].complete) {
+                        ctx.drawImage(loadedImages['dining'], 0, 0, 800, 400);
+                    } else {
+                        ctx.fillStyle = colors.black;
+                        ctx.fillRect(0, 0, 800, 400);
+                    }
+                    
+                    if (locations.dining.items.includes('silver key')) {
+                        ctx.fillStyle = colors.gray;
+                        ctx.shadowBlur = 12;
+                        ctx.shadowColor = '#aaaaff';
+                        ctx.fillRect(520, 350, 15, 5);
+                        ctx.fillRect(522, 345, 11, 15);
+                        ctx.shadowBlur = 0;
+                    }
+                    
+                    drawGirl(350, 330);
+                }
+            },
+            
+            upstairs: {
+                name: 'Upstairs Hallway',
+                description: 'A dark hallway stretches before you. Doors line both sides. A window at the end shows the night sky. You can go south back downstairs.',
+                items: [],
+                exits: { south: 'foyer' },
+                draw: () => {
+                    if (loadedImages['upstairs'] && loadedImages['upstairs'].complete) {
+                        ctx.drawImage(loadedImages['upstairs'], 0, 0, 800, 400);
+                    } else {
+                        ctx.fillStyle = colors.black;
+                        ctx.fillRect(0, 0, 800, 400);
+                    }
+                    drawGirl(380, 330);
+                }
+            }
+        };
+
+        // Game text output
+        function addText(text, className = '') {
+            const textArea = document.getElementById('textArea');
+            const p = document.createElement('div');
+            p.className = 'game-text ' + className;
+            p.textContent = text;
+            textArea.appendChild(p);
+            textArea.scrollTop = textArea.scrollHeight;
+        }
+
+        // Update status bar
+        function updateStatus() {
+            const locName = game.currentLocation === 'intro' ? 'Start' : locations[game.currentLocation].name;
+            document.getElementById('locationName').textContent = locName;
+            document.getElementById('itemCount').textContent = game.inventory.length;
+            document.getElementById('questProgress').textContent = `${game.questsCompleted}/${game.totalQuests}`;
+        }
+
+        // Draw current location
+        function drawLocation() {
+            locations[game.currentLocation].draw();
+        }
+
+        // Process commands
+        function processCommand(input) {
+            const cmd = input.toLowerCase().trim();
+            const words = cmd.split(' ');
+            const verb = words[0];
+            const noun = words.slice(1).join(' ');
+            
+            // Handle intro screen
+            if (game.currentLocation === 'intro') {
+                game.currentLocation = 'gate';
+                game.gameStarted = true;
+                drawLocation();
+                addText('=== THE MYSTERY OF SHADOW MANOR ===\n', 'important');
+                addText('You are Rebecca, a brave explorer investigating the abandoned Shadow Manor.');
+                addText('Rumors speak of a hidden treasure somewhere within...\n');
+                addText(locations[game.currentLocation].description);
+                addText('\nType HELP for a list of commands.\n', 'help-text');
+                updateStatus();
+                return;
+            }
+            
+            addText(`> ${input}`, 'command');
+            
+            // Movement commands
+            const directions = {
+                'north': 'north', 'n': 'north',
+                'south': 'south', 's': 'south',
+                'east': 'east', 'e': 'east',
+                'west': 'west', 'w': 'west'
+            };
+            
+            if (directions[verb]) {
+                const dir = directions[verb];
+                const loc = locations[game.currentLocation];
+                
+                if (loc.exits[dir]) {
+                    if (dir === 'north' && game.currentLocation === 'entrance' && !game.flags.doorUnlocked) {
+                        addText('The manor doors are locked. You need a key.', 'error');
+                        return;
+                    }
+                    
+                    game.currentLocation = loc.exits[dir];
+                    drawLocation();
+                    addText(locations[game.currentLocation].description);
+                    updateStatus();
+                } else {
+                    addText('You can\'t go that way.', 'error');
+                }
+                return;
+            }
+            
+            // Look command
+            if (verb === 'look' || verb === 'l') {
+                addText(locations[game.currentLocation].description);
+                const items = locations[game.currentLocation].items;
+                if (items.length > 0) {
+                    addText(`\nYou see: ${items.join(', ')}`, 'important');
+                }
+                return;
+            }
+            
+            // Inventory command
+            if (verb === 'inventory' || verb === 'i') {
+                if (game.inventory.length === 0) {
+                    addText('Your inventory is empty.');
+                } else {
+                    addText(`You are carrying: ${game.inventory.join(', ')}`, 'important');
+                }
+                return;
+            }
+            
+            // Take/Get command
+            if (verb === 'take' || verb === 'get' || verb === 'pick') {
+                const loc = locations[game.currentLocation];
+                const itemName = noun.replace('up ', '');
+                
+                if (loc.items.includes(itemName)) {
+                    loc.items = loc.items.filter(item => item !== itemName);
+                    game.inventory.push(itemName);
+                    addText(`You take the ${itemName}.`, 'success');
+                    drawLocation();
+                    updateStatus();
+                    checkQuests();
+                } else {
+                    addText(`There is no ${itemName} here.`, 'error');
+                }
+                return;
+            }
+            
+            // Use command
+            if (verb === 'use') {
+                if (noun === 'key' && game.currentLocation === 'entrance' && game.inventory.includes('key')) {
+                    game.flags.doorUnlocked = true;
+                    addText('You unlock the manor doors with the key.', 'success');
+                    checkQuests();
+                } else if (noun.includes('journal') && game.inventory.includes('journal')) {
+                    addText('The journal reads: "The treasure lies where the light of the lantern reveals the path beneath the earth."', 'important');
+                } else if (noun.includes('lantern') && game.inventory.includes('lantern')) {
+                    if (game.currentLocation === 'sideyard') {
+                        addText('The lantern illuminates a symbol on the cellar door - you need the silver key!', 'important');
+                    } else {
+                        addText('The lantern casts a warm glow.');
+                    }
+                } else if (noun.includes('silver') && game.inventory.includes('silver key') && game.currentLocation === 'sideyard') {
+                    game.flags.foundTreasure = true;
+                    addText('You unlock the cellar door and descend. Inside, you find an ancient chest filled with gold and jewels! YOU WIN!', 'success');
+                    checkQuests();
+                } else {
+                    addText('You can\'t use that here.', 'error');
+                }
+                return;
+            }
+            
+            // Examine command
+            if (verb === 'examine' || verb === 'x') {
+                if (noun.includes('rose') && game.inventory.includes('rose')) {
+                    addText('A beautiful red rose, still fresh despite everything.');
+                } else if (noun.includes('shovel') && game.inventory.includes('shovel')) {
+                    addText('A sturdy gardening shovel with a wooden handle.');
+                } else if (noun.includes('rope') && game.inventory.includes('rope')) {
+                    addText('A length of strong rope, slightly frayed.');
+                } else if (noun.includes('key') && game.inventory.includes('key')) {
+                    addText('An iron key that looks like it would fit the manor doors.');
+                } else if (noun.includes('journal') && game.inventory.includes('journal')) {
+                    addText('An old leather journal with handwritten notes about the manor\'s secrets.');
+                } else if (noun.includes('lantern') && game.inventory.includes('lantern')) {
+                    addText('An oil lantern that still has fuel in it.');
+                } else if (noun.includes('silver') && game.inventory.includes('silver key')) {
+                    addText('An ornate silver key with strange markings.');
+                } else {
+                    addText('You don\'t have that item or can\'t examine it here.', 'error');
+                }
+                return;
+            }
+            
+            // Help command
+            if (verb === 'help' || verb === 'h') {
+                addText('\nCOMMANDS:', 'important');
+                addText('Movement: north/n, south/s, east/e, west/w');
+                addText('Actions: look/l, take [item], use [item], examine/x [item]');
+                addText('Other: inventory/i, help/h');
+                addText('\nQUESTS:');
+                addText('1. Find a way to enter the manor');
+                addText('2. Discover the journal\'s secret');
+                addText('3. Find the hidden treasure');
+                return;
+            }
+            
+            addText('I don\'t understand that command. Type HELP for a list of commands.', 'error');
+        }
+
+        // Check quest completion
+        function checkQuests() {
+            if (game.flags.doorUnlocked && game.questsCompleted < 1) {
+                game.questsCompleted = 1;
+                addText('\n🏆 QUEST COMPLETED: You\'ve entered the manor!', 'success');
+                updateStatus();
+            }
+            
+            if (game.inventory.includes('journal') && game.questsCompleted < 2) {
+                game.questsCompleted = 2;
+                addText('\n🏆 QUEST COMPLETED: You\'ve found the journal!', 'success');
+                updateStatus();
+            }
+            
+            if (game.flags.foundTreasure && game.questsCompleted < 3) {
+                game.questsCompleted = 3;
+                addText('\n🏆 QUEST COMPLETED: You\'ve found the treasure! You win!', 'success');
+                updateStatus();
+            }
+        }
+
+        // Input handling
+        document.getElementById('commandInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                const input = e.target.value;
+                if (input.trim()) {
+                    processCommand(input);
+                    e.target.value = '';
+                }
+            }
+        });
+
+        // Initialize game
+        function initGame() {
+            drawLocation();
+            addText('Press ENTER to start your adventure...', 'help-text');
+            updateStatus();
+        }
+
+        initGame();
+    </script>
+</body>
+</html>
